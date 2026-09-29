@@ -14,10 +14,10 @@
 #
 # The kernel is configured exactly like the ROM build (vendor/lineage
 # build/tasks/kernel.mk): sm8150-qgki_defconfig, then each fragment merged with
-# merge_config.sh and olddefconfig. The noroot variant merges one more fragment
-# (configs/noroot.config) that disables KernelSU-Next; the droidspaces variant
-# is the rooted build plus configs/droidspaces.config (container support). The
-# kernel tree itself is never modified.
+# merge_config.sh and olddefconfig. That alone is the unrooted kernel the ROM
+# ships (noroot). The root variant adds the tree's vendor/xiaomi/ksu.config
+# (KernelSU-Next); droidspaces is root plus configs/droidspaces.config
+# (container support). The kernel tree itself is never modified.
 
 set -euo pipefail
 
@@ -50,7 +50,7 @@ FRAGMENTS=(
     "$KERNEL_DIR/arch/arm64/configs/vendor/xiaomi/sm8150-common.config"
     "$KERNEL_DIR/arch/arm64/configs/vendor/xiaomi/raphael.config"
 )
-[ "$VARIANT" = noroot ] && FRAGMENTS+=("$AK/configs/noroot.config")
+[ "$VARIANT" != noroot ] && FRAGMENTS+=("$KERNEL_DIR/arch/arm64/configs/vendor/xiaomi/ksu.config")
 [ "$VARIANT" = droidspaces ] && FRAGMENTS+=("$AK/configs/droidspaces.config")
 
 # Tag the kernel release with the variant, e.g. 5.4.302-RaphGhost-KSUN-g<sha>
