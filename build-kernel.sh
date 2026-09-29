@@ -53,6 +53,17 @@ FRAGMENTS=(
 [ "$VARIANT" = noroot ] && FRAGMENTS+=("$AK/configs/noroot.config")
 [ "$VARIANT" = droidspaces ] && FRAGMENTS+=("$AK/configs/droidspaces.config")
 
+# Tag the kernel release with the variant, e.g. 5.4.302-RaphGhost-KSUN-g<sha>
+# (LOCALVERSION_AUTO still appends the commit), so uname -r tells the zips
+# apart from each other and from the ROM's own kernel (-RaphGhost-g<sha>).
+case "$VARIANT" in
+    root) VTAG=KSUN ;;
+    noroot) VTAG=NoRoot ;;
+    droidspaces) VTAG=KSUN-Droidspaces ;;
+esac
+echo "CONFIG_LOCALVERSION=\"-RaphGhost-$VTAG\"" > "$WORK/localversion.config"
+FRAGMENTS+=("$WORK/localversion.config")
+
 SYSROOT="$TOP/prebuilts/gcc/linux-x86/host/x86_64-linux-glibc2.17-4.8/sysroot"
 KBT="$TOP/prebuilts/kernel-build-tools/linux-x86"
 BT="$TOP/prebuilts/build-tools/linux-x86/bin"
@@ -85,6 +96,8 @@ if [ "$VARIANT" = noroot ]; then
 else
     grep -q "^CONFIG_KSU=y" "$KOUT/.config" || { echo "CONFIG_KSU not enabled" >&2; exit 1; }
 fi
+grep -qx "CONFIG_LOCALVERSION=\"-RaphGhost-$VTAG\"" "$KOUT/.config" ||
+    { echo "CONFIG_LOCALVERSION not applied" >&2; exit 1; }
 if [ "$VARIANT" = droidspaces ]; then
     # merge_config.sh drops options whose dependencies aren't met; fail
     # instead of shipping a zip that silently lacks them.
@@ -103,17 +116,19 @@ find "$DTS" -type f -name "*.dtb" | sort | xargs cat > "$WORK/dtb"
 mkdtboimg create "$WORK/dtbo.img" --page_size=4096 $(find "$DTS" -type f -name "*.dtbo" | sort)
 
 KREL="$(cat "$KOUT/include/config/kernel.release")"
+KVER="${KREL%%-*}"
+COMMIT="${KREL##*-g}"
 if [ "$VARIANT" != noroot ]; then
     KSU_TAG="$(sed -n 's/^KSU_VERSION_TAG_OVERRIDE := //p' "$KERNEL_DIR/drivers/kernelsu/ksun-version.mk" 2>/dev/null || true)"
     LABEL="KSUN-${KSU_TAG:-unknown}"
-    STRING="RaphGhost $KREL (KernelSU-Next ${KSU_TAG:-}) by ergdev"
+    STRING="$KREL (KernelSU-Next ${KSU_TAG:-}) by ergdev"
     if [ "$VARIANT" = droidspaces ]; then
         LABEL="$LABEL-Droidspaces"
-        STRING="RaphGhost $KREL (KernelSU-Next ${KSU_TAG:-}, Droidspaces) by ergdev"
+        STRING="$KREL (KernelSU-Next ${KSU_TAG:-}, Droidspaces) by ergdev"
     fi
 else
     LABEL="NoRoot"
-    STRING="RaphGhost $KREL (no root) by ergdev"
+    STRING="$KREL (no root) by ergdev"
 fi
 
 echo "== Packaging"
@@ -125,7 +140,8 @@ cp "$KOUT/arch/arm64/boot/Image.gz" "$STAGE/Image.gz"
 cp "$WORK/dtb" "$STAGE/dtb"
 cp "$WORK/dtbo.img" "$STAGE/dtbo.img"
 
-ZIP="$AK/out/RaphGhost-$KREL-$LABEL-$(date +%Y%m%d-%H%M).zip"
+# e.g. RaphGhost-5.4.302-KSUN-v3.4.0-legacy-g040fc4f98a98-20260929-1216.zip
+ZIP="$AK/out/RaphGhost-$KVER-$LABEL-g$COMMIT-$(date +%Y%m%d-%H%M).zip"
 ( cd "$STAGE" && zip -qr9 "$ZIP" . )
 md5sum "$ZIP" | cut -d' ' -f1 > "$ZIP.md5"
 
