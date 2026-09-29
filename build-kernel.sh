@@ -1,8 +1,9 @@
 #!/bin/bash
 # Build the RaphGhost kernel from the derp-17 kernel tree and package it as an
-# AnyKernel3 flashable zip. Called by build-root.sh and build-noroot.sh.
+# AnyKernel3 flashable zip. Called by build-root.sh, build-noroot.sh and
+# build-droidspaces.sh.
 #
-#   VARIANT=root|noroot ./build-kernel.sh
+#   VARIANT=root|noroot|droidspaces ./build-kernel.sh
 #
 # Overridable environment:
 #   TOP         Android tree that provides the prebuilt toolchain and host tools
@@ -14,20 +15,21 @@
 # The kernel is configured exactly like the ROM build (vendor/lineage
 # build/tasks/kernel.mk): sm8150-qgki_defconfig, then each fragment merged with
 # merge_config.sh and olddefconfig. The noroot variant merges one more fragment
-# (configs/noroot.config) that disables KernelSU-Next; the kernel tree itself is
-# never modified.
+# (configs/noroot.config) that disables KernelSU-Next; the droidspaces variant
+# is the rooted build plus configs/droidspaces.config (container support). The
+# kernel tree itself is never modified.
 
 set -euo pipefail
 
 AK="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VARIANT="${VARIANT:?set VARIANT=root or VARIANT=noroot}"
+VARIANT="${VARIANT:?set VARIANT=root, noroot or droidspaces}"
 TOP="${TOP:-$(cd "$AK/../derp-17" && pwd)}"
 KERNEL_DIR="${KERNEL_DIR:-$TOP/kernel/xiaomi/sm8150}"
 JOBS="${JOBS:-6}"
 
 case "$VARIANT" in
-    root|noroot) ;;
-    *) echo "VARIANT must be root or noroot" >&2; exit 1 ;;
+    root|noroot|droidspaces) ;;
+    *) echo "VARIANT must be root, noroot or droidspaces" >&2; exit 1 ;;
 esac
 
 CLANG="$TOP/prebuilts/clang/host/linux-x86/clang-r596125"
@@ -49,6 +51,7 @@ FRAGMENTS=(
     "$KERNEL_DIR/arch/arm64/configs/vendor/xiaomi/raphael.config"
 )
 [ "$VARIANT" = noroot ] && FRAGMENTS+=("$AK/configs/noroot.config")
+[ "$VARIANT" = droidspaces ] && FRAGMENTS+=("$AK/configs/droidspaces.config")
 
 SYSROOT="$TOP/prebuilts/gcc/linux-x86/host/x86_64-linux-glibc2.17-4.8/sysroot"
 KBT="$TOP/prebuilts/kernel-build-tools/linux-x86"
@@ -82,6 +85,13 @@ if [ "$VARIANT" = noroot ]; then
 else
     grep -q "^CONFIG_KSU=y" "$KOUT/.config" || { echo "CONFIG_KSU not enabled" >&2; exit 1; }
 fi
+if [ "$VARIANT" = droidspaces ]; then
+    # merge_config.sh drops options whose dependencies aren't met; fail
+    # instead of shipping a zip that silently lacks them.
+    missing=$(grep -oE "^CONFIG_[A-Z0-9_]+=y" "$AK/configs/droidspaces.config" |
+        while read -r opt; do grep -qx "$opt" "$KOUT/.config" || echo "$opt"; done)
+    [ -z "$missing" ] || { echo "droidspaces options not applied:" $missing >&2; exit 1; }
+fi
 
 echo "== Building Image.gz and dtbs"
 kmake Image.gz dtbs
@@ -93,10 +103,14 @@ find "$DTS" -type f -name "*.dtb" | sort | xargs cat > "$WORK/dtb"
 mkdtboimg create "$WORK/dtbo.img" --page_size=4096 $(find "$DTS" -type f -name "*.dtbo" | sort)
 
 KREL="$(cat "$KOUT/include/config/kernel.release")"
-if [ "$VARIANT" = root ]; then
+if [ "$VARIANT" != noroot ]; then
     KSU_TAG="$(sed -n 's/^KSU_VERSION_TAG_OVERRIDE := //p' "$KERNEL_DIR/drivers/kernelsu/ksun-version.mk" 2>/dev/null || true)"
     LABEL="KSUN-${KSU_TAG:-unknown}"
     STRING="RaphGhost $KREL (KernelSU-Next ${KSU_TAG:-}) by ergdev"
+    if [ "$VARIANT" = droidspaces ]; then
+        LABEL="$LABEL-Droidspaces"
+        STRING="RaphGhost $KREL (KernelSU-Next ${KSU_TAG:-}, Droidspaces) by ergdev"
+    fi
 else
     LABEL="NoRoot"
     STRING="RaphGhost $KREL (no root) by ergdev"
