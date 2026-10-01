@@ -53,9 +53,9 @@ FRAGMENTS=(
 [ "$VARIANT" != noroot ] && FRAGMENTS+=("$KERNEL_DIR/arch/arm64/configs/vendor/xiaomi/ksu.config")
 [ "$VARIANT" = droidspaces ] && FRAGMENTS+=("$AK/configs/droidspaces.config")
 
-# Tag the kernel release with the variant, e.g. 5.4.302-RaphGhost-KSUN-g<sha>
+# Tag the kernel release with the variant, e.g. 5.4.302-RaphGhost-KSUN-<sha>
 # (LOCALVERSION_AUTO still appends the commit), so uname -r tells the zips
-# apart from each other and from the ROM's own kernel (-RaphGhost-g<sha>).
+# apart from each other and from the ROM's own kernel (-RaphGhost-<sha>).
 case "$VARIANT" in
     root) VTAG=KSUN ;;
     noroot) VTAG=NoRoot ;;
@@ -117,7 +117,11 @@ mkdtboimg create "$WORK/dtbo.img" --page_size=4096 $(find "$DTS" -type f -name "
 
 KREL="$(cat "$KOUT/include/config/kernel.release")"
 KVER="${KREL%%-*}"
-COMMIT="${KREL##*-g}"
+# The commit is the last field, with -dirty kept for uncommitted trees.
+DIRTY=""
+case "$KREL" in *-dirty) DIRTY=-dirty ;; esac
+COMMIT="${KREL%-dirty}"
+COMMIT="${COMMIT##*-}$DIRTY"
 if [ "$VARIANT" != noroot ]; then
     KSU_TAG="$(sed -n 's/^KSU_VERSION_TAG_OVERRIDE := //p' "$KERNEL_DIR/drivers/kernelsu/ksun-version.mk" 2>/dev/null || true)"
     LABEL="KSUN-${KSU_TAG:-unknown}"
@@ -140,8 +144,8 @@ cp "$KOUT/arch/arm64/boot/Image.gz" "$STAGE/Image.gz"
 cp "$WORK/dtb" "$STAGE/dtb"
 cp "$WORK/dtbo.img" "$STAGE/dtbo.img"
 
-# e.g. RaphGhost-5.4.302-KSUN-v3.4.0-legacy-g040fc4f98a98-20260929-1216.zip
-ZIP="$AK/out/RaphGhost-$KVER-$LABEL-g$COMMIT-$(date +%Y%m%d-%H%M).zip"
+# e.g. RaphGhost-5.4.302-KSUN-v3.4.0-legacy-bde19bd69353-20261001-1251.zip
+ZIP="$AK/out/RaphGhost-$KVER-$LABEL-$COMMIT-$(date +%Y%m%d-%H%M).zip"
 ( cd "$STAGE" && zip -qr9 "$ZIP" . )
 md5sum "$ZIP" | cut -d' ' -f1 > "$ZIP.md5"
 

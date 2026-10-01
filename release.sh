@@ -25,9 +25,9 @@ KERNEL_DIR="${KERNEL_DIR:-$AK/../derp-17/kernel/xiaomi/sm8150}"
 DRAFT=""
 [ "${1:-}" = "--draft" ] && DRAFT="--draft"
 
-# Zip names: RaphGhost-<kver>-<label>-g<commit>-<YYYYMMDD>-<HHMM>.zip, with
+# Zip names: RaphGhost-<kver>-<label>-<commit>-<YYYYMMDD>-<HHMM>.zip, with
 # <label> NoRoot, KSUN-<ksu tag> or KSUN-<ksu tag>-Droidspaces.
-ZIPRE='^RaphGhost-([0-9.]+)-(.+)-g([0-9a-f]+(-dirty)?)-[0-9]{8}-[0-9]{4}\.zip$'
+ZIPRE='^RaphGhost-([0-9.]+)-(.+)-([0-9a-f]{12}(-dirty)?)-[0-9]{8}-[0-9]{4}\.zip$'
 newest() {
     ls -t "$AK"/out/RaphGhost-*.zip 2>/dev/null | while read -r z; do
         l="$(basename "$z" | sed -nE "s/$ZIPRE/\2/p")"
@@ -65,7 +65,7 @@ if ! git -C "$KERNEL_DIR" merge-base --is-ancestor "$COMMIT" FETCH_HEAD 2>/dev/n
     echo "commit $COMMIT is not on $REPO $BRANCH yet - push the kernel first" >&2; exit 1
 fi
 
-TAG="${TAG:-RaphGhost-$KVER-g$SHORT-$(date +%Y%m%d)}"
+TAG="${TAG:-RaphGhost-$KVER-$SHORT-$(date +%Y%m%d)}"
 KSU_TAG="$(field "$ROOT_ZIP" 2 | sed 's/^KSUN-//')"
 
 if [ -z "${NOTES:-}" ]; then
