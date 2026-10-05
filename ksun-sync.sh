@@ -68,12 +68,26 @@ for c in "${commits[@]}"; do
     subject="$(git -C "$KSUN_CACHE" log -1 --format=%s "$c")"
     if [ -f "$SKIP" ] && grep -qE "^${short:0:12}" "$SKIP"; then
         echo "   skip $short (ksun-skip.txt): $subject"
+        last="$c"
         continue
     fi
     p="$tmp/$short.patch"
     git -C "$KSUN_CACHE" format-patch -1 --stdout "$c" -- kernel uapi > "$p"
+    # A new uapi version needs a ksud/manager that speaks it; with an older
+    # one ksud's boot stages do nothing (no module scripts, no module
+    # updates). Stop before such a commit, and before any listed as
+    # "hold <sha>" in ksun-skip.txt, until the manager has caught up.
+    if grep -qE '^[-+]#define KERNEL_SU_UAPI_VERSION' "$p" ||
+            { [ -f "$SKIP" ] && grep -qE "^hold ${short:0:12}" "$SKIP"; }; then
+        echo "ksun-sync: WARNING: holding at $short \"$subject\" (it changes the" >&2
+        echo "ksun-sync:   KernelSU uapi version, or is on hold in ksun-skip.txt); it and" >&2
+        echo "ksun-sync:   everything after it stay out until the manager supports it" >&2
+        held=1
+        break
+    fi
     if ! grep -q '^diff --git ' "$p"; then
         echo "   skip $short (no kernel/ or uapi/ change): $subject"
+        last="$c"
         continue
     fi
     sed -i -E \
@@ -85,6 +99,7 @@ for c in "${commits[@]}"; do
         -e 's#^(rename (from|to) |copy (from|to) )uapi/#\1drivers/kernelsu/uapi/#' "$p"
     if git -C "$KERNEL_DIR" apply --check -R "$p" 2>/dev/null; then
         echo "   skip $short (already in the tree): $subject"
+        last="$c"
         continue
     fi
     # Ported earlier (by hand or by this script) and changed since, so the
@@ -94,6 +109,7 @@ for c in "${commits[@]}"; do
     if git -C "$KERNEL_DIR" log --format='%an%x09%s' -- drivers/kernelsu |
             grep -xF "$author	$subject" >/dev/null; then
         echo "   skip $short (already ported, same author and subject): $subject"
+        last="$c"
         continue
     fi
     if ! git -C "$KERNEL_DIR" am -q -3 "$p"; then
@@ -108,9 +124,12 @@ for c in "${commits[@]}"; do
  $short.]"
     echo "   port $short -> $(git -C "$KERNEL_DIR" rev-parse --short=12 HEAD): $subject"
     ported=$((ported + 1))
+    last="$c"
 done
 
-# Record the new upstream position and the version the manager should see.
+# Record the new upstream position and the version the manager should see:
+# upstream's head, or the last commit taken when the sync stopped at a hold.
+[ -n "${held:-}" ] && up="$last"
 upshort="$(git -C "$KSUN_CACHE" rev-parse --short=12 "$up")"
 count="$(git -C "$KSUN_CACHE" rev-list --count "$up")"
 version=$((30000 + count + 289))
@@ -124,4 +143,4 @@ drivers/kernelsu now matches upstream KernelSU-Next $KSUN_BRANCH $upshort
 (rev-list count $count), so report 30000 + $count + 289 = $version to the
 manager." -- "$MK"
 fi
-echo "ksun-sync: ported $ported, now at $KSUN_BRANCH $upshort (KSU version $version); nothing pushed"
+echo "ksun-sync: ported $ported, now at $KSUN_BRANCH $upshort (KSU version $version)${held:+, held back from newer commits}; nothing pushed"
