@@ -11,13 +11,17 @@
 #   KERNEL_DIR  kernel source (default: $TOP/kernel/xiaomi/sm8150)
 #   JOBS        parallel jobs (default: 6)
 #   CLEAN=1     wipe this variant's build directory first
+#   KSUN_SYNC=0 don't pull new KernelSU-Next commits first (root, droidspaces)
 #
 # The kernel is configured exactly like the ROM build (vendor/lineage
 # build/tasks/kernel.mk): sm8150-qgki_defconfig, then each fragment merged with
 # merge_config.sh and olddefconfig. That alone is the unrooted kernel the ROM
 # ships (noroot). The root variant adds the tree's vendor/xiaomi/ksu.config
 # (KernelSU-Next); droidspaces is root plus configs/droidspaces.config
-# (container support). The kernel tree itself is never modified.
+# (container support). Before a root or droidspaces build, ksun-sync.sh
+# commits any new upstream KernelSU-Next legacy changes to the kernel tree's
+# drivers/kernelsu (local commits, never pushed); nothing else in the kernel
+# tree is modified.
 
 set -euo pipefail
 
@@ -37,6 +41,14 @@ HOSTBIN="$TOP/out/host/linux-x86/bin"
 for p in "$KERNEL_DIR/Makefile" "$CLANG/bin/clang" "$HOSTBIN/dtc" "$HOSTBIN/mkdtboimg"; do
     [ -e "$p" ] || { echo "missing: $p (build the ROM tree once so host tools exist)" >&2; exit 1; }
 done
+
+# Bring drivers/kernelsu up to date with upstream KernelSU-Next first
+# (ksun-sync.sh). KSUN_SYNC=0 skips it; a commit that doesn't apply stops
+# the build.
+if [ "$VARIANT" != noroot ] && [ "${KSUN_SYNC:-1}" = 1 ]; then
+    echo "== Syncing KernelSU-Next"
+    KERNEL_DIR="$KERNEL_DIR" "$AK/ksun-sync.sh"
+fi
 
 WORK="$AK/work/$VARIANT"
 KOUT="$WORK/kernel"

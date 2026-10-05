@@ -1,0 +1,6 @@
+# Upstream KernelSU-Next legacy commits that ksun-sync.sh must not port,
+# one 12-character sha per line (anything after it is a comment). These are
+# changes the kernel already carries in another form, so applying them would
+# conflict or duplicate.
+7eac8a177760 kernel: sucompat: fall back to sh until ksud is installed (our PR #1565; ours: eed406f740e9, fd113f2c1c4e)
+cd739c788023 kernel: sucompat: keep ksud fallback in sync with /data/adb; selinux_hide: retry context hook (#1565; ours: 78df05e8afb3, bde19bd69353)
