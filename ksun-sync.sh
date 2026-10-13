@@ -59,7 +59,9 @@ fi
     die "$KERNEL_DIR has uncommitted changes"
 git -C "$KERNEL_DIR" symbolic-ref -q HEAD >/dev/null || die "$KERNEL_DIR is on a detached HEAD"
 
-echo "ksun-sync: ${#commits[@]} new upstream $KSUN_BRANCH commit(s)"
+MANAGER_UAPI="$( [ -f "$SKIP" ] && sed -nE 's/^manager-uapi ([0-9]+).*/\1/p' "$SKIP" | tail -1)"
+MANAGER_UAPI="${MANAGER_UAPI:-4}"
+echo "ksun-sync: ${#commits[@]} new upstream $KSUN_BRANCH commit(s); manager speaks uapi $MANAGER_UAPI"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 ported=0
@@ -75,9 +77,11 @@ for c in "${commits[@]}"; do
     git -C "$KSUN_CACHE" format-patch -1 --stdout "$c" -- kernel uapi > "$p"
     # A new uapi version needs a ksud/manager that speaks it; with an older
     # one ksud's boot stages do nothing (no module scripts, no module
-    # updates). Stop before such a commit, and before any listed as
-    # "hold <sha>" in ksun-skip.txt, until the manager has caught up.
-    if grep -qE '^[-+]#define KERNEL_SU_UAPI_VERSION' "$p" ||
+    # updates). Stop before a commit that raises it above the version the
+    # released manager speaks ("manager-uapi <n>" in ksun-skip.txt, default
+    # 4), and before any listed as "hold <sha>", until the manager catches up.
+    new_uapi="$(sed -nE 's/^\+#define KERNEL_SU_UAPI_VERSION ([0-9]+).*/\1/p' "$p" | head -1)"
+    if { [ -n "$new_uapi" ] && [ "$new_uapi" -gt "$MANAGER_UAPI" ]; } ||
             { [ -f "$SKIP" ] && grep -qE "^hold ${short:0:12}" "$SKIP"; }; then
         echo "ksun-sync: WARNING: holding at $short \"$subject\" (it changes the" >&2
         echo "ksun-sync:   KernelSU uapi version, or is on hold in ksun-skip.txt); it and" >&2

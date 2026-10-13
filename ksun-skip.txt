@@ -4,3 +4,7 @@
 # conflict or duplicate.
 7eac8a177760 kernel: sucompat: fall back to sh until ksud is installed (our PR #1565; ours: eed406f740e9, fd113f2c1c4e)
 cd739c788023 kernel: sucompat: keep ksud fallback in sync with /data/adb; selinux_hide: retry context hook (#1565; ours: 78df05e8afb3, bde19bd69353)
+# uapi version the released KernelSU-Next manager/ksud speaks. Commits that
+# raise KERNEL_SU_UAPI_VERSION above it are held. v3.4.1 (2026-10-09, manager
+# 33333) speaks uapi 5 (EVENT_SERVICES).
+manager-uapi 5
